@@ -1,0 +1,515 @@
+
+
+$$\\[1in]$$
+
+
+
+# **Is COMPAS a racist algorithm?**
+## *Gustavo Bernardino*, Msc.  
+### Data Scientist  
+
+[Click for my profile in linkedin](https://www.linkedin.com/in/gustavo-bernardino-7bb26395/) 
+
+There was a considerable public debate about the possibility of racism in the COMPAS algorithm, which is a score to evaluate the chances of recidivism by offenders in a scale of 1 to 10. Many courts in the USA use this algorithm in order to help judges make informed decisions about the destiny of the offender, if they must, for example, be released with a parole or not. COMPAS is a private algorithm owned by the company NorthPonte, therefore, its inner workings are an "industrial secret". A suspicion was raised by **ProPublica**, a journalistic organization engaged in social activism, that claimed COMPAS was biased against the black population. 
+
+Well, I got the same dataset that they used, and will verify if the statement is true.
+
+Some people used complex statistical models in order to prove or disprove racism in COMPAS. However, these complexities are easily dispensable. It is much more enlightening to look into the premises of the model and explore the raw data, so we are able to understand what is possible to infer from the data and what is not. Complex models are useless if you do not understand the nature of the problem and also the characteristics of the data. 
+
+It is vital not to torture datasets so that they confess what one wants, but rather try to understand the premises involved and how the data is organized. I came to the conclusion that COMPAS is not racist. I will show every step of how it was done. The dataset was made available by the company who owns the algorithm, but the details and inner workings were not revealed, so we must apply logics to deduce variable meanings. All the processes reasoning will be explained bellow. The tool used for the analysis was R. In session 5.4. we added an interactive data tool, so you can manipulate the data and see it for yourself.
+
+## **1. Load libraries and csv.**
+
+The first step is to load the libraries into a dataframe. You can check the first data entries in the dataset.
+
+```{r message=FALSE, warning=FALSE, include=TRUE}
+
+library('kableExtra')
+library('tidyverse')
+library('dplyr')
+library(DT)
+library(data.table)
+compas<-read.csv('C:/COMPAS/compas-scores.csv')
+
+head(compas,20) %>% 
+  datatable(class = "stripe",escape = F,style = "bootstrap", width = 100, height = 800, fillContainer = T,
+                  options= list(scrollY="400px", dom="t"))
+```
+
+
+$$\\[1in]$$
+
+
+
+## **2. Missing values analysis**
+
+Now, let's make an analysis of the missing values or null values. It is important to understand why certain values are missing in the dataset, if it was due to an ill-constructed database, or if it is due to human failure, or even if the null values were intended.
+
+```{r message=FALSE}
+# study of nulls
+summary(is.na.data.frame(compas)) %>% 
+   kbl() %>% 
+  kable_styling()
+```
+
+
+The variables that have nulls are **days_b_screening_arrest**; **c_days_from_compas**; **num_r_cases**; **r_days_from_arrest** and **num_vr_cases**.
+
+It is difficult to deduce what each one means, but nevertheless, they appear to be logs that register when the offender was captured, since when he is imprisoned and so on. For our particular analysis they will not be useful a priori, we will keep the essential variables and eliminate these in order to obtain a cleaner dataframe.
+
+
+
+```{r message=FALSE}
+
+# Elimination of nulls
+
+compas$days_b_screening_arrest <- NULL
+compas$c_days_from_compas<-NULL
+compas$num_r_cases<-NULL
+compas$r_days_from_arrest<-NULL
+compas$num_vr_cases<-NULL
+
+```
+
+
+$$\\[1in]$$
+
+## **3. Analysis of the variables and study of their meaning**
+
+After loading the data and examining the null values, I will proceed to the analysis  of the variables in the dataset.
+
+### **3.1. The Decile Scores **
+
+One of the main functions of the compas system is to predict an offender's chances of recidivism using a numerical scale from **1** to **10**. Let's look at the indices called **decile_scores**.
+
+```{r message=FALSE}
+head(compas,n=20) %>% 
+  select(type_of_assessment, decile_score.1,decile_score,v_type_of_assessment,v_decile_score) %>% 
+  kbl() %>%
+  kable_styling()
+```
+
+As it seems, the variables **decile_score** and **decile_score.1** are the same. There are two decimal scores, one to evaluate the risk of recidivism (**decile_score**) and the other to evaluate the risk of violent recidivism (**v_decile_score**).
+
+
+### **3.2. Felony and misdemeanor in youth **
+
+Continuing with the reading of the variables, we know that the American penal code provides for two types of offenses:
+
+* __felony__ and.
+* __misdemeanor__. 
+
+And also the history of the offender strongly influences the output of the model, especially if there is a history of crimes committed during youth, so it is easy to deduce the meaning of the following variables:
+
+* __juv_fel_count__: juvenile felony count.
+* __juv_misd_count__:juvenile misdemeanor count
+* __priors_count__: any other crime that was not committed as a juvenile.
+
+
+
+```{r message=FALSE}
+head(compas,n=10) %>% 
+  select(juv_fel_count, juv_misd_count,priors_count) %>% 
+  kbl() %>%
+  kable_styling()
+```
+
+
+### **3.3. Degree of original charge and and reoffense **
+
+By knowing the types of crimes, it is also easier to deduce the meaning of the variables **c_charge_degree**, **c_charge_desc**, **r_charge_degree**, **r_charge_desc**, which classify crimes into:
+
+* __F__ (felony),
+* __M__ (misdemeanor), and 
+* __O__ (others)
+
+There are also the letters **'c'**and**'r'** in the variables which, second an inquiry, mean:
+
+* __c_charge_degree__: Degree of the original charge.
+* __c_charge_desc__: Description of the original charge
+* __r_charge_degree__: Degree of the charge upon reoffending
+* __r_charge_desc__: Description of the charge on reoffense
+
+source: https://urbanspatial.github.io/AlgorithmicFairness_ACodebasedPrimerForPublicSectorDataScientists/#4_recidivism_prediction
+
+
+
+```{r message=FALSE}
+head(compas,n=10) %>%
+  select(c_charge_degree,c_charge_desc,r_charge_degree,r_charge_desc) %>% 
+  kbl() %>% 
+  kable_styling()
+```
+
+###  **3.4. Negative value for a binary proposition (?)**
+
+One oddity is the value of **-1** for the **is_recid** variable which, theoretically, should be a binary variable (recidivist or not). We will see if there is any relationship between **-1** and a possible lower score for the variable **decile_score** and **v_decile_score**.
+
+```{r}
+head(compas,n=200) %>%
+select( decile_score, v_decile_score, is_recid) %>%
+filter(is_recid==-1) %>% 
+  kbl() %>% 
+  kable_styling()
+
+```
+
+Apparently there is no relationship between the negative variable and a lower score. Let's see if it has any relationship with the accusations.
+
+```{r}
+head(compas,n=200) %>%
+select( is_recid,r_charge_degree,r_charge_desc,c_charge_degree,c_charge_desc) %>%
+filter(is_recid==-1) %>% 
+  kbl() %>% 
+  kable_styling()
+
+```
+
+There is also no relationship between the negative variable and any type of crime. Therefore, if we do any modeling, we will proceed like other analyses conducted on the theme, which eliminate this **-1** value and work only with binary values or consider it the same as **0**
+
+
+
+
+$$\\[1in]$$
+
+## **4. Initial exploratory analysis** 
+
+
+Now that we have a better notion of the main variables, let's make a bar chart and histograms with all the variables to visualize their distributions and frequencies. To do this overview, we can use the DataExplorer library.
+
+### **4.1. Variables distribution **
+
+```{r message=FALSE}
+library(DataExplorer)
+compas %>% plot_bar()
+compas %>% plot_histogram()
+
+```
+
+
+
+
+$$\\[1in]$$
+
+
+
+### **4.2. Frequency of crime by race**
+
+
+```{r message=FALSE}
+race_freq<- compas %>% 
+  group_by(race)%>%
+  summarise(total_by_race = n()) %>% 
+  mutate(freq_r=total_by_race/sum(total_by_race))
+race_freq%>% 
+  kbl() %>% 
+  kable_styling()
+
+```
+The majority of offenders are male and between the ages of 25 and 45.
+The races with the highest number of offenders follow this order:
+
+1. African-American
+2. Caucasian
+3. Hispanic 
+4. other 
+5. Asian 
+6. Native American.
+
+
+### **4.2. Proportion of recidivists and non-recidivists**
+
+When committing a crime for the first time, most fall into the **felony** category, but upon reoffending, the highest classification would be in **Other**. This is to say that, on the second time they commit crimes, the tendency is for it to be less serious.
+
+Most offenders have a low risk of recidivism and most have not committed violent recidivism either.
+
+```{r message=FALSE}
+c<-compas %>% 
+  group_by(c_charge_degree) %>% 
+  count() %>% 
+  rename(q_first_crime=n)
+r<-compas %>% 
+  group_by(r_charge_degree) %>% 
+  count() %>% 
+  rename(q_reincid=n)
+r<-r[-c(1)]
+c<-cbind.data.frame(c,r)
+c %>% 
+  mutate('variation(%)'=(q_reincid-q_first_crime)*100/q_first_crime)%>% 
+  kbl() %>% 
+  kable_styling()
+```
+**q_first_crime** indicates the number of felonies and misdemeanors at the time of the first offense committed, **q_recid** is the number of felonies and misdemeanors at the time of recidivism. As can be seen in the table, the variation of the serious offenses was **-83.37%**, that of the minor offenses of **-33.73%** and that of the other category an increase of **968.43%**. In other words, recidivism tends to be less serious. 
+
+
+
+
+
+$$\\[1in]$$
+
+## **5. The racial issue**
+
+Since the main problem with the COMPAS system is the likely racial bias, we will place more emphasis on investigating this issue.
+The controversial racial issue began with ProPublica which describes itself as:
+
+**"[...] an independent, nonprofit newsroom that produces investigative journalism with moral force. We dig deep into important issues, shining a light on abuses of power and betrayals of public trust - and we stick with those issues as long as it takes to hold power to account. "* ProPublica is an independent, nonprofit newsroom that produces investigative journalism with moral force.
+
+* ProPublica published the article that gave rise to the discussion with the following title: *Machine Bias: There's software used across the country to predict future criminals. And it's biased against blacks.* 
+
+* The article is available here: https://www.propublica.org/article/machine-bias-risk-assessments-in-criminal-sentencing
+
+* And the explanation of how they concluded it was racially biased here: https://www.propublica.org/article/how-we-analyzed-the-compas-recidivism-algorithm
+
+
+### **5.1. Quantity of crimes by race**
+
+To begin an analysis of the racial issue, let's look at our sample. We observe that, in the first analysis, the black population, although relatively smaller than the white population, in total terms, has individuals who commit relatively more crimes.
+
+
+
+```{r message=FALSE}
+race_freq<- compas %>% 
+  group_by(race)%>%
+  summarise(total_by_race = n()) %>% 
+  mutate(freq_r=total_by_race/sum(total_by_race)) %>% 
+  arrange(desc(rank(total_by_race)))
+race_freq%>% 
+  kbl() %>% 
+  kable_styling()
+```
+
+
+
+
+
+$$\\[1in]$$
+
+
+
+### **5.2. Race distribution**
+```{r}
+ggplot(data=race_freq)+
+  geom_bar(mapping = aes(x=reorder(race, desc(total_by_race)), y=total_by_race,fill=race),stat = 'identity')+
+  labs(y='race total',x='race')
+```
+
+To get an even clearer idea of the proportion of races considered in the sample of offenders, we produced a tree map.
+
+
+$$\\[1in]$$
+
+
+### **5.3. Treemap to illustrate proportion of criminals by race**
+
+
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics("treemap race.png")
+```
+
+We note that the black offender population is almost equivalent to the sum of all the other offenders put together, which is even more significant when you consider that **the black population represents 12.2% of the total U.S. population.**
+
+Source: https://www.visualcapitalist.com/visualizing-u-s-population-by-race/
+
+However, the number of individuals of a given race who committed a crime **is not important**, because, according to Northpointe, the company that created COMPAS, **the race variable is not included in the model**. So, assuming that what Northpointe is saying is true, we need to look for the answer to the bias towards the black population in other variables, and not in race itself.
+
+
+
+$$\\[1in]$$
+
+
+### **5.4. Graphical analysis with pivot table.**
+
+Now we are going to generate a dataframe that has the most relevant variables with a dynamic chart function, power BI style, in order  to do the different analyses. For this we will use the rpivotTable library and knitr library, to work with the image of the generated graphs. Feel free to manipulate the data as you like it.
+
+```{r message=FALSE}
+library('knitr')
+
+
+library(rpivotTable)
+
+compas1<-compas %>% 
+  select(sex,age,age_cat,race,juv_fel_count,juv_misd_count,juv_other_count,priors_count, c_charge_degree, r_charge_degree,is_recid,is_violent_recid,vr_charge_degree,v_decile_score,decile_score)
+
+gg<-compas1
+rp<-rpivotTable(gg,   # data frame 
+                aggregatorName="Count",     
+                cols="race", # column of data.frame 
+                rows="is_recid",
+                renderName="Heatmap",height=800, width=700)
+
+rp
+
+```
+
+What we can assess from the outset, and which is ProPublica's argument, is that the highest recidivism risk scores are distributed in the black race. According to the following heat map table: 
+
+
+$$\\[1in]$$
+
+
+
+### **5.5. Heat table considering decile_scores per race**.
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics("decile_score_heat.png")
+```
+
+Let us then select the essential variables and examine them in order to evaluate whether the claim of racial bias makes sense.
+
+
+
+$$\\[1in]$$
+
+
+
+### **5.6. Youth crime**
+
+Offenses committed in youth have an impact on the score, since, after all, recidivism is more likely to happen, once the habit has been established early in youth. We now examine the variable juv_fel_count:
+
+
+```{r}
+compas %>% 
+  select(race,juv_fel_count) %>% 
+  group_by(race) %>% 
+  filter(juv_fel_count!=0) %>% 
+  count() %>% 
+  rename(q_juvenile_felonies=n) %>% 
+  kbl() %>% 
+  kable_styling()
+```
+
+
+
+$$\\[1in]$$
+
+
+### **5.7. Number of felonies commited in youth by race (bar-table)**
+
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics("juv_fel_count_bartable.png")
+```
+
+
+
+$$\\[1in]$$
+
+
+
+### **5.8. Number of felonies in youth by race (graphic)**
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics("juv_fel_count_graph.png")
+```
+```{r}
+
+(327-59)/59
+```
+The level at which the black population offends in youth is **454.23%** higher than that of the white population, which, certainly, at the end of the algorithm calculation will generate a higher weight for black individuals.
+
+
+
+$$\\[1in]$$
+
+
+### **5.9 Recidivism rate by race**
+
+Now, let us examine the variable indicating whether the individual is a recidivist. Let us group it by race.
+
+
+
+```{r message=FALSE}
+
+compas %>% 
+  group_by(race,is_recid) %>%
+  filter(is_recid==1) %>% 
+  count() %>% 
+  arrange(desc(rank(n)))%>% 
+  kbl() %>% 
+  kable_styling()
+```
+
+
+
+$$\\[1in]$$
+
+
+
+### **5.10. Proportion of reincidence by race (bar-table)** 
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics("recidivitated.png")
+
+```
+
+
+
+$$\\[1in]$$
+
+
+### **5.11. Proportion of reincidence by race (graphic)**
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics("isrecid.png")
+```
+
+```{r}
+(2175-1089)/1089
+```
+
+
+
+$$\\[1in]$$
+
+
+
+### **5.12. Violent recidivism rate by race**  
+
+Now let's look at violent recidivism by race:
+
+```{r}
+compas %>% 
+  select(race,is_violent_recid) %>% 
+  group_by(race) %>%
+  filter(is_violent_recid==1) %>% 
+  count() %>% 
+  rename(q_violent_recid=n) %>% 
+  arrange(desc(q_violent_recid))
+```
+
+
+$$\\[1in]$$
+
+
+### **5.13. Violent recidence (bar-table)**
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics("is_violent_bartable.png")
+```
+
+
+$$\\[1in]$$
+
+
+### **5.14. Violent recidence (graphic)**
+```{r echo=FALSE, out.width = '100%'}
+knitr::include_graphics("is_violent.png")
+```
+
+```{r}
+(541-233)/233
+```
+As mentioned, we will consider for the **is_recid** variable only the binary values **0** and **1**. In fact, there is a higher recidivism rate in the black American population, followed by Caucasians and Hispanics. Relative to whites, black offenders have *99.72%* more recidivism cases. As for violent recidivism, *132.18%* more cases were identified in the black population.
+
+
+$$\\[1in]$$
+
+
+# **6. Partial conclusion of the exploratory analysis**
+
+According to the company that developed the COMPAS system, Northpointe, the race variable is not included in the model, so it may be premature to say that there is a racial bias if race is not even included in the calculation. What causes such bias are other variables that happen to have a higher incidence in the black grouping, such as: higher number of juvenile offenses, higher number of recidivism and higher number of violent crimes, and all of these variables influence the final decile_score result. I'm not saying that there is no racism in American society, or that the judicial system is always fair, or that NorthPointe has the best algorithm possible. However, as demonstrated, racism cannot be inferred from the data. And that is that.
+
+
+Nonetheless, the COMPAS model is bound to raise suspicion because, after all, **justice must be applied to individual acts and not to virtual possibilities of future crime or generalized inferences about oneself**. This is actually a much more important discussion that ProPublica did not raise: Should one be judged based on statistical prediction at all? Is it fair to condemn based on possibility and not fact? This is a much more serious question that ProPublica failed to grasp.  
+
+$$\\[1in]$$
+
+
+$$\\[1in]$$
+
+
+
